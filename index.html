@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>EdgeLink OS | Weather Station</title>
+
+  <!-- Fonts -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    rel="stylesheet" />
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.8.0/vanilla-tilt.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <!-- Dynamic Background -->
+  <div class="ambient-bg"></div>
+  <div class="grid-overlay"></div>
+
+  <div class="app-container">
+    <!-- Header / Top Bar -->
+    <header class="top-bar glass">
+      <div class="brand">
+        <div class="logo-box">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="white" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+            <path d="M2 17L12 22L22 17" stroke="white" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+            <path d="M2 12L12 17L22 12" stroke="white" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+        </div>
+        <span class="brand-name">EdgeLink<span class="brand-highlight">OS</span></span>
+      </div>
+
+      <div class="top-actions">
+        <div class="status-pill glass" id="connectionStatus">
+          <span class="status-dot"></span>
+          <span class="status-text">Live</span>
+        </div>
+        <button class="icon-btn glass" onclick="toggleTheme()" aria-label="Toggle Theme">
+          <span class="icon">◑</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Bento Grid Layout -->
+    <main class="bento-grid">
+
+      <!-- Hero Module (2x2) -->
+      <div class="bento-card hero-card glass" data-tilt>
+        <div class="hero-content">
+          <div class="location-badge">
+            <span class="icon">📍</span> UMT Campus
+          </div>
+          <div class="weather-main">
+            <div class="temp-display">
+              <span class="temp-value" id="tempValue">--</span>
+              <span class="temp-unit">°C</span>
+            </div>
+            <div class="feels-like-container">
+              <span class="feels-like-badge" id="heatIndexBadge">Feels like --°C</span>
+            </div>
+            <div class="weather-condition" id="weatherCondition">
+              <span class="condition-icon">🌤️</span>
+              <span class="condition-text">Loading...</span>
+            </div>
+          </div>
+          <div class="hero-footer">
+            <div class="time-display">
+              <span id="currentTime">--:--</span>
+              <span class="time-ampm" id="currentAmPm">--</span>
+            </div>
+            <div class="date-display" id="currentDate">--</div>
+          </div>
+        </div>
+        <div class="hero-bg-effect"></div>
+      </div>
+
+      <!-- Rain Gauge Module (1x2) -->
+      <div class="bento-card rain-card glass" data-tilt>
+        <div class="card-header">
+          <h3>Rainfall</h3>
+          <span class="icon">🌧️</span>
+        </div>
+        <div class="rain-gauge-wrapper">
+          <div class="liquid-gauge">
+            <div class="liquid" id="rainLiquid"></div>
+            <div class="gauge-value-overlay">
+              <span id="gaugeValue">0.000</span>
+              <span class="unit">mm</span>
+            </div>
+          </div>
+        </div>
+        <div class="rain-status" id="rainStatusText">No Rain</div>
+      </div>
+
+      <!-- Humidity Module (1x1) -->
+      <div class="bento-card sensor-card glass" data-tilt>
+        <div class="sensor-header">
+          <span class="sensor-icon humid-icon">💧</span>
+          <span class="sensor-name">Humidity</span>
+        </div>
+        <div class="sensor-body">
+          <span class="sensor-value" id="humidValue">--</span>
+          <span class="sensor-unit">%</span>
+        </div>
+        <div class="sensor-footer">
+          <div class="trend-indicator" id="humidTrend">
+            <span class="trend-arrow">→</span> Stable
+          </div>
+          <div class="dew-point" id="dewPointDisplay">DP: --°C</div>
+        </div>
+        <div class="mini-chart-container">
+          <canvas id="miniChartHum"></canvas>
+        </div>
+      </div>
+
+      <!-- Pressure Module (1x1) -->
+      <div class="bento-card sensor-card glass" data-tilt>
+        <div class="sensor-header">
+          <span class="sensor-icon press-icon">⏲️</span>
+          <span class="sensor-name">Pressure</span>
+        </div>
+        <div class="sensor-body">
+          <span class="sensor-value" id="pressValue">--</span>
+          <span class="sensor-unit">hPa</span>
+        </div>
+        <div class="sensor-footer">
+          <div class="trend-indicator" id="pressureTrend">
+            <span class="trend-arrow">→</span> Stable
+          </div>
+        </div>
+        <div class="mini-chart-container">
+          <canvas id="miniChartPress"></canvas>
+        </div>
+      </div>
+
+      <!-- History Chart Module (2x1) -->
+      <div class="bento-card chart-card glass" data-tilt data-tilt-glare data-tilt-max-glare="0.1">
+        <div class="chart-header">
+          <h3>History</h3>
+          <div class="chart-tabs">
+            <button class="tab-btn active" onclick="switchChart('temp')">Temp</button>
+            <button class="tab-btn" onclick="switchChart('humid')">Humid</button>
+            <button class="tab-btn" onclick="switchChart('press')">Press</button>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="mainHistoryChart"></canvas>
+        </div>
+      </div>
+
+      <!-- System Info Module (1x1) -->
+      <div class="bento-card system-card glass" data-tilt>
+        <div class="card-header">
+          <h3>System</h3>
+          <span class="icon">⚙️</span>
+        </div>
+        <div class="system-stats">
+          <div class="stat-row">
+            <span class="label">Updates</span>
+            <span class="value mono" id="infoUpdateCount">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="label">Last</span>
+            <span class="value mono" id="lastUpdate">--:--:--</span>
+          </div>
+          <div class="stat-row">
+            <span class="label">Mode</span>
+            <span class="value badge" id="modeDisplay">Live</span>
+          </div>
+        </div>
+        <button class="action-btn" onclick="exportData()">
+          <span>Export Data</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <path d="M7 10l5 5 5-5"></path>
+            <path d="M12 15V3"></path>
+          </svg>
+        </button>
+      </div>
+
+    </main>
+
+    <footer class="app-footer">
+      <p>EdgeLink OS v2.0 • UMT IoT Project</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    // Initialize Vanilla Tilt
+    VanillaTilt.init(document.querySelectorAll(".bento-card"), {
+      max: 5,
+      speed: 400,
+      glare: true,
+      "max-glare": 0.2,
+      scale: 1.02
+    });
+  </script>
+</body>
+
+</html>
