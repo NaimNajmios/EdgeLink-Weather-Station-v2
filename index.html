@@ -165,7 +165,14 @@
       <div class="bento-card system-card glass" data-tilt>
         <div class="card-header">
           <h3>System</h3>
-          <span class="icon">⚙️</span>
+          <button class="settings-btn" onclick="toggleSettings()" aria-label="Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+              </path>
+            </svg>
+          </button>
         </div>
         <div class="system-stats">
           <div class="stat-row">
@@ -196,6 +203,54 @@
     <footer class="app-footer">
       <p>EdgeLink OS v2.0 • UMT IoT Project</p>
     </footer>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+      <div class="modal glass">
+        <div class="modal-header">
+          <h3>Settings</h3>
+          <button class="close-btn" onclick="toggleSettings()">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-item">
+            <label>Update Interval</label>
+            <div class="setting-control">
+              <select id="intervalSelect" onchange="updateInterval(this.value)">
+                <option value="5000">5 seconds</option>
+                <option value="15000" selected>15 seconds</option>
+                <option value="30000">30 seconds</option>
+                <option value="60000">1 minute</option>
+              </select>
+            </div>
+          </div>
+          <div class="setting-item">
+            <label>Theme Accent</label>
+            <div class="color-picker">
+              <button class="color-btn active" style="--c: #0ea5e9" onclick="setTheme('#0ea5e9')"></button>
+              <button class="color-btn" style="--c: #8b5cf6" onclick="setTheme('#8b5cf6')"></button>
+              <button class="color-btn" style="--c: #10b981" onclick="setTheme('#10b981')"></button>
+              <button class="color-btn" style="--c: #f59e0b" onclick="setTheme('#f59e0b')"></button>
+              <button class="color-btn" style="--c: #ef4444" onclick="setTheme('#ef4444')"></button>
+            </div>
+          </div>
+          <div class="setting-item">
+            <label>Notifications</label>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="notifToggle" checked onchange="toggleNotifications(this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="action-btn secondary" onclick="resetSettings()">Reset Defaults</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
   </div>
 
   <script src="app.js"></script>

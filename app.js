@@ -53,8 +53,8 @@ const UI = {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    loadData(); // Load cached data first
     initCharts();
+    loadData(); // Load cached data first
     startClock();
     fetchData();
     setInterval(fetchData, CONFIG.UPDATE_INTERVAL);
@@ -288,7 +288,14 @@ function updateDashboard(feeds) {
     // Update Metadata
     state.updateCount++;
     UI.updateCount.textContent = state.updateCount;
-    UI.lastUpdate.textContent = new Date().toLocaleTimeString();
+
+    // Show actual data timestamp from ThingSpeak (when sensor recorded it)
+    const dataTimestamp = new Date(latest.created_at);
+    UI.lastUpdate.textContent = dataTimestamp.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
 }
 
 function updateWeatherCondition(temp, rain) {
@@ -477,7 +484,8 @@ function checkAlerts(temp, rain) {
 }
 
 function toggleSettings() {
-    UI.settingsModal.classList.toggle('active');
+    const modal = document.getElementById('settingsModal');
+    if (modal) modal.classList.toggle('active');
 }
 
 function setTheme(color) {
@@ -495,6 +503,83 @@ function setTheme(color) {
     // Save preference
     localStorage.setItem('edgeLinkTheme', color);
 }
+
+// Update data fetch interval
+let fetchIntervalId = null;
+
+function updateInterval(ms) {
+    const interval = parseInt(ms);
+    CONFIG.UPDATE_INTERVAL = interval;
+
+    // Clear existing interval and set new one
+    if (fetchIntervalId) clearInterval(fetchIntervalId);
+    fetchIntervalId = setInterval(fetchData, interval);
+
+    // Save preference
+    localStorage.setItem('edgeLinkInterval', interval);
+
+    // Show feedback
+    showToast(`Update interval set to ${interval / 1000}s`, 'info');
+}
+
+// Toggle notifications
+let notificationsEnabled = true;
+
+function toggleNotifications(enabled) {
+    notificationsEnabled = enabled;
+    localStorage.setItem('edgeLinkNotifications', enabled);
+
+    if (enabled) {
+        showToast('Notifications enabled', 'info');
+    }
+}
+
+// Reset all settings to defaults
+function resetSettings() {
+    // Reset theme
+    setTheme('#0ea5e9');
+
+    // Reset interval
+    document.getElementById('intervalSelect').value = '15000';
+    updateInterval(15000);
+
+    // Reset notifications
+    document.getElementById('notifToggle').checked = true;
+    toggleNotifications(true);
+
+    // Clear local storage settings
+    localStorage.removeItem('edgeLinkTheme');
+    localStorage.removeItem('edgeLinkInterval');
+    localStorage.removeItem('edgeLinkNotifications');
+
+    showToast('Settings reset to defaults', 'info');
+}
+
+// Override showToast to respect notification settings
+const originalShowToast = showToast;
+showToast = function (message, type = 'info') {
+    if (!notificationsEnabled && type !== 'alert') return;
+
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+
+    let icon = 'ℹ️';
+    if (type === 'warning') icon = '⚠️';
+    if (type === 'alert') icon = '🚨';
+
+    toast.innerHTML = `<span class="toast-icon">${icon}</span> ${message}`;
+
+    container.appendChild(toast);
+
+    // Remove after 5 seconds
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s forwards';
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+};
 
 function saveData(feeds) {
     localStorage.setItem('edgeLinkData', JSON.stringify(feeds));
