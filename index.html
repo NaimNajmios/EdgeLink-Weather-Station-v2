@@ -48,11 +48,19 @@
           <span class="status-dot"></span>
           <span class="status-text">Live</span>
         </div>
-        <button class="icon-btn glass" onclick="toggleTheme()" aria-label="Toggle Theme">
-          <span class="icon">◑</span>
+        <button class="icon-btn glass" onclick="toggleTheme()" aria-label="Toggle Theme" title="Toggle Light/Dark Mode">
+          <span class="icon">☀️</span>
         </button>
       </div>
     </header>
+
+    <!-- Fullscreen Button -->
+    <button class="fullscreen-btn glass" onclick="toggleFullscreen()" aria-label="Fullscreen" title="Toggle Fullscreen">
+      <svg id="fullscreenIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+      </svg>
+    </button>
 
     <!-- Bento Grid Layout -->
     <main class="bento-grid">
@@ -150,14 +158,50 @@
       <div class="bento-card chart-card glass" data-tilt data-tilt-glare data-tilt-max-glare="0.1">
         <div class="chart-header">
           <h3>History</h3>
-          <div class="chart-tabs">
-            <button class="tab-btn active" onclick="switchChart('temp')">Temp</button>
-            <button class="tab-btn" onclick="switchChart('humid')">Humid</button>
-            <button class="tab-btn" onclick="switchChart('press')">Press</button>
+          <div class="chart-controls">
+            <div class="time-range-tabs">
+              <button class="range-btn active" onclick="setTimeRange(20)">Recent</button>
+              <button class="range-btn" onclick="setTimeRange(100)">24h</button>
+            </div>
+            <div class="chart-tabs">
+              <button class="tab-btn active" onclick="switchChart('temp')">Temp</button>
+              <button class="tab-btn" onclick="switchChart('humid')">Humid</button>
+              <button class="tab-btn" onclick="switchChart('press')">Press</button>
+            </div>
           </div>
         </div>
         <div class="chart-wrapper">
           <canvas id="mainHistoryChart"></canvas>
+        </div>
+        <div class="chart-footer">
+          <div class="stats-summary">
+            <span class="stat-item"><span class="stat-label">Min:</span> <span id="chartMin">--</span></span>
+            <span class="stat-item"><span class="stat-label">Max:</span> <span id="chartMax">--</span></span>
+            <span class="stat-item"><span class="stat-label">Avg:</span> <span id="chartAvg">--</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weather Forecast Module (1x1) -->
+      <div class="bento-card forecast-card glass" data-tilt>
+        <div class="card-header">
+          <h3>Forecast</h3>
+          <span class="icon">🔮</span>
+        </div>
+        <div class="forecast-content">
+          <div class="forecast-icon" id="forecastIcon">
+            <svg class="weather-svg" viewBox="0 0 100 100">
+              <circle class="sun" cx="50" cy="50" r="20" fill="#f59e0b" />
+              <g class="rays">
+                <line x1="50" y1="15" x2="50" y2="5" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" />
+                <line x1="50" y1="95" x2="50" y2="85" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" />
+                <line x1="15" y1="50" x2="5" y2="50" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" />
+                <line x1="95" y1="50" x2="85" y2="50" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" />
+              </g>
+            </svg>
+          </div>
+          <div class="forecast-text" id="forecastText">Fair Weather</div>
+          <div class="forecast-detail" id="forecastDetail">Pressure stable</div>
         </div>
       </div>
 
@@ -184,18 +228,29 @@
             <span class="value mono" id="lastUpdate">--:--:--</span>
           </div>
           <div class="stat-row">
+            <span class="label">Fresh</span>
+            <span class="value mono countdown" id="dataCountdown">30:00</span>
+          </div>
+          <div class="stat-row">
             <span class="label">Mode</span>
             <span class="value badge" id="modeDisplay">Live</span>
           </div>
         </div>
-        <button class="action-btn" onclick="exportData()">
-          <span>Export Data</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <path d="M7 10l5 5 5-5"></path>
-            <path d="M12 15V3"></path>
-          </svg>
-        </button>
+        <div class="export-dropdown">
+          <button class="action-btn" onclick="toggleExportMenu()">
+            <span>Export Data</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <path d="M7 10l5 5 5-5"></path>
+              <path d="M12 15V3"></path>
+            </svg>
+          </button>
+          <div class="export-menu" id="exportMenu">
+            <button onclick="exportData('csv')">📄 CSV</button>
+            <button onclick="exportData('json')">📋 JSON</button>
+            <button onclick="exportData('xlsx')">📊 Excel</button>
+          </div>
+        </div>
       </div>
 
     </main>

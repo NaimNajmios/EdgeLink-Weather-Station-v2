@@ -23,11 +23,15 @@ let state = {
         humid: [],
         press: [],
         labels: [],
-        feeds: []
+        feeds: [],
+        allFeeds: []  // Store all fetched feeds for 24h view
     },
     currentTab: 'temp',
+    timeRange: 20,  // Number of data points to show (20 = recent, 100 = 24h)
     lastUpdate: null,
-    updateCount: 0
+    lastDataTimestamp: null,
+    updateCount: 0,
+    isOffline: false
 };
 
 // DOM Elements
@@ -43,19 +47,30 @@ const UI = {
     ampm: document.getElementById('currentAmPm'),
     date: document.getElementById('currentDate'),
     lastUpdate: document.getElementById('lastUpdate'),
+    dataCountdown: document.getElementById('dataCountdown'),
     updateCount: document.getElementById('infoUpdateCount'),
     connection: document.getElementById('connectionStatus'),
     heatIndex: document.getElementById('heatIndexBadge'),
     dewPoint: document.getElementById('dewPointDisplay'),
     toastContainer: document.getElementById('toastContainer'),
-    settingsModal: document.getElementById('settingsModal')
+    settingsModal: document.getElementById('settingsModal'),
+    // New elements
+    chartMin: document.getElementById('chartMin'),
+    chartMax: document.getElementById('chartMax'),
+    chartAvg: document.getElementById('chartAvg'),
+    forecastIcon: document.getElementById('forecastIcon'),
+    forecastText: document.getElementById('forecastText'),
+    forecastDetail: document.getElementById('forecastDetail'),
+    exportMenu: document.getElementById('exportMenu')
 };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    initTheme();       // Load saved theme
     initCharts();
-    loadData(); // Load cached data first
+    loadData();        // Load cached data first
     startClock();
+    startCountdown();  // Start the data freshness countdown
     fetchData();
     setInterval(fetchData, CONFIG.UPDATE_INTERVAL);
 });
@@ -199,6 +214,7 @@ function switchChart(type) {
     }
 
     chart.update();
+    updateChartStats();  // Update min/max/avg for new tab
 }
 
 /* ==========================================
@@ -207,16 +223,43 @@ function switchChart(type) {
 
 async function fetchData() {
     try {
-        const response = await fetch(`https://api.thingspeak.com/channels/${CONFIG.CHANNEL_ID}/feeds.json?results=${CONFIG.MAX_DATA_POINTS}&api_key=${CONFIG.READ_API_KEY}`);
+        // Fetch more data points for 24h view
+        const dataPoints = Math.max(state.timeRange, 100);
+        const response = await fetch(`https://api.thingspeak.com/channels/${CONFIG.CHANNEL_ID}/feeds.json?results=${dataPoints}&api_key=${CONFIG.READ_API_KEY}`);
+
+        if (!response.ok) throw new Error('Network response was not ok');
+
         const data = await response.json();
 
         if (data.feeds && data.feeds.length > 0) {
-            updateDashboard(data.feeds);
+            // Store all feeds for 24h view
+            state.data.allFeeds = data.feeds;
+
+            // Use time range to slice data for display
+            const displayFeeds = data.feeds.slice(-state.timeRange);
+            updateDashboard(displayFeeds);
+            updateForecast(data.feeds);  // Use all data for forecast
             updateStatus(true);
+
+            // Save compressed data for offline use
+            saveCompressedData(data.feeds);
+
+            // Clear offline mode if we were offline
+            if (state.isOffline) {
+                state.isOffline = false;
+                hideOfflineBanner();
+            }
         }
     } catch (error) {
         console.error('Error fetching data:', error);
         updateStatus(false);
+
+        // Try to load cached data if offline
+        if (!state.isOffline) {
+            state.isOffline = true;
+            showOfflineBanner();
+            loadCachedData();
+        }
     }
 }
 
@@ -272,6 +315,9 @@ function updateDashboard(feeds) {
     // Update Pressure Trend
     updatePressureTrend(feeds);
 
+    // Update Chart Stats (Min/Max/Avg)
+    updateChartStats();
+
     // Update Page Title
     document.title = `${temp.toFixed(1)}°C | EdgeLink OS`;
 
@@ -291,6 +337,8 @@ function updateDashboard(feeds) {
 
     // Show actual data timestamp from ThingSpeak (when sensor recorded it)
     const dataTimestamp = new Date(latest.created_at);
+    state.lastDataTimestamp = dataTimestamp;  // Save for countdown timer
+
     UI.lastUpdate.textContent = dataTimestamp.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
@@ -379,9 +427,83 @@ function startClock() {
     setInterval(update, 1000);
 }
 
+// Data freshness countdown timer (30 minutes = 1800 seconds)
+const FRESHNESS_LIMIT = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+function startCountdown() {
+    function updateCountdown() {
+        if (!state.lastDataTimestamp) {
+            if (UI.dataCountdown) {
+                UI.dataCountdown.textContent = '--:--';
+                UI.dataCountdown.className = 'value mono countdown';
+            }
+            return;
+        }
+
+        const now = new Date();
+        const elapsed = now - state.lastDataTimestamp;
+        const remaining = FRESHNESS_LIMIT - elapsed;
+
+        if (UI.dataCountdown) {
+            if (remaining <= 0) {
+                // Data is stale (older than 30 minutes)
+                UI.dataCountdown.textContent = 'Stale';
+                UI.dataCountdown.className = 'value mono countdown expired';
+            } else {
+                // Calculate minutes and seconds remaining
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                UI.dataCountdown.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                // Update color class based on time remaining
+                if (remaining > 15 * 60 * 1000) {
+                    // More than 15 minutes - fresh (green)
+                    UI.dataCountdown.className = 'value mono countdown fresh';
+                } else if (remaining > 5 * 60 * 1000) {
+                    // 5-15 minutes - warning (amber)
+                    UI.dataCountdown.className = 'value mono countdown warning';
+                } else {
+                    // Less than 5 minutes - critical (red, blinking)
+                    UI.dataCountdown.className = 'value mono countdown expired';
+                }
+            }
+        }
+    }
+
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+}
+
 function toggleTheme() {
-    // Placeholder for theme toggle logic
-    console.log('Theme toggle clicked');
+    const html = document.documentElement;
+    const currentTheme = html.getAttribute('data-theme');
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+    html.setAttribute('data-theme', newTheme);
+    localStorage.setItem('edgeLinkDarkMode', newTheme);
+
+    // Update the theme toggle button icon
+    const themeBtn = document.querySelector('.icon-btn[onclick="toggleTheme()"]');
+    if (themeBtn) {
+        themeBtn.querySelector('.icon').textContent = newTheme === 'light' ? '🌙' : '☀️';
+    }
+
+    // Show feedback toast
+    showToast(`Switched to ${newTheme} mode`, 'info');
+}
+
+// Initialize theme on page load
+function initTheme() {
+    const savedTheme = localStorage.getItem('edgeLinkDarkMode');
+    if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        // Update button icon
+        const themeBtn = document.querySelector('.icon-btn[onclick="toggleTheme()"]');
+        if (themeBtn) {
+            themeBtn.querySelector('.icon').textContent = savedTheme === 'light' ? '🌙' : '☀️';
+        }
+    }
 }
 
 function updatePressureTrend(feeds) {
@@ -410,36 +532,277 @@ function updatePressureTrend(feeds) {
     }
 }
 
-function exportData() {
-    if (!state.data.feeds || state.data.feeds.length === 0) {
-        alert('No data to export');
+function exportData(format = 'csv') {
+    const feeds = state.data.allFeeds.length > 0 ? state.data.allFeeds : state.data.feeds;
+
+    if (!feeds || feeds.length === 0) {
+        showToast('No data to export', 'warning');
         return;
     }
 
-    const headers = ['Timestamp', 'Temperature (C)', 'Humidity (%)', 'Pressure (hPa)', 'Rainfall (mm)'];
-    const rows = state.data.feeds.map(f => [
-        f.created_at,
-        f.field1,
-        f.field2,
-        f.field3,
-        f.field5
-    ]);
+    // Close export menu
+    if (UI.exportMenu) UI.exportMenu.classList.remove('active');
 
-    const csvContent = [
-        headers.join(','),
-        ...rows.map(r => r.join(','))
-    ].join('\n');
+    const filename = `weather_data_${new Date().toISOString().slice(0, 10)}`;
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    if (format === 'csv') {
+        const headers = ['Timestamp', 'Temperature (C)', 'Humidity (%)', 'Pressure (hPa)', 'Rainfall (mm)'];
+        const rows = feeds.map(f => [
+            f.created_at,
+            f.field1,
+            f.field2,
+            f.field3,
+            f.field5
+        ]);
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(r => r.join(','))
+        ].join('\n');
+
+        downloadFile(csvContent, `${filename}.csv`, 'text/csv;charset=utf-8;');
+
+    } else if (format === 'json') {
+        const jsonData = feeds.map(f => ({
+            timestamp: f.created_at,
+            temperature: parseFloat(f.field1) || 0,
+            humidity: parseFloat(f.field2) || 0,
+            pressure: parseFloat(f.field3) || 0,
+            rainfall: parseFloat(f.field5) || 0
+        }));
+
+        downloadFile(JSON.stringify(jsonData, null, 2), `${filename}.json`, 'application/json;charset=utf-8;');
+
+    } else if (format === 'xlsx') {
+        // Create Excel using SheetJS library
+        const data = [
+            ['Timestamp', 'Temperature (°C)', 'Humidity (%)', 'Pressure (hPa)', 'Rainfall (mm)'],
+            ...feeds.map(f => [
+                f.created_at,
+                parseFloat(f.field1) || 0,
+                parseFloat(f.field2) || 0,
+                parseFloat(f.field3) || 0,
+                parseFloat(f.field5) || 0
+            ])
+        ];
+
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Weather Data');
+        XLSX.writeFile(wb, `${filename}.xlsx`);
+    }
+
+    showToast(`Exported as ${format.toUpperCase()}`, 'info');
+}
+
+function downloadFile(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-
     link.setAttribute('href', url);
-    link.setAttribute('download', `weather_data_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', filename);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+}
+
+function toggleExportMenu() {
+    if (UI.exportMenu) {
+        UI.exportMenu.classList.toggle('active');
+    }
+}
+
+// Update Min/Max/Avg stats in chart footer
+function updateChartStats() {
+    let data;
+    let unit;
+
+    if (state.currentTab === 'temp') {
+        data = state.data.temp;
+        unit = '°C';
+    } else if (state.currentTab === 'humid') {
+        data = state.data.humid;
+        unit = '%';
+    } else {
+        data = state.data.press;
+        unit = ' hPa';
+    }
+
+    if (data && data.length > 0) {
+        const validData = data.filter(v => !isNaN(v) && v !== null);
+        if (validData.length > 0) {
+            const min = Math.min(...validData);
+            const max = Math.max(...validData);
+            const avg = validData.reduce((a, b) => a + b, 0) / validData.length;
+
+            if (UI.chartMin) UI.chartMin.textContent = min.toFixed(1) + unit;
+            if (UI.chartMax) UI.chartMax.textContent = max.toFixed(1) + unit;
+            if (UI.chartAvg) UI.chartAvg.textContent = avg.toFixed(1) + unit;
+        }
+    }
+}
+
+// Set time range for chart (Recent vs 24h)
+function setTimeRange(range) {
+    state.timeRange = range;
+
+    // Update button states
+    document.querySelectorAll('.range-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+
+    // Re-slice data from allFeeds
+    if (state.data.allFeeds.length > 0) {
+        const displayFeeds = state.data.allFeeds.slice(-range);
+        updateDashboard(displayFeeds);
+    } else {
+        // Fetch new data with larger range
+        fetchData();
+    }
+}
+
+// Weather forecast based on pressure trends
+function updateForecast(feeds) {
+    if (!feeds || feeds.length < 10) return;
+
+    // Get pressure readings from last 3 hours (approx 12 readings at 15min intervals)
+    const recentPressure = feeds.slice(-12).map(f => parseFloat(f.field3) || 0);
+    const olderPressure = feeds.slice(-24, -12).map(f => parseFloat(f.field3) || 0);
+
+    const avgRecent = recentPressure.reduce((a, b) => a + b, 0) / recentPressure.length;
+    const avgOlder = olderPressure.length > 0
+        ? olderPressure.reduce((a, b) => a + b, 0) / olderPressure.length
+        : avgRecent;
+
+    const pressureChange = avgRecent - avgOlder;
+
+    let forecastText, forecastDetail, iconSVG;
+
+    if (pressureChange < -2) {
+        // Rapidly falling pressure - storm coming
+        forecastText = 'Storm Coming';
+        forecastDetail = `Pressure dropping ${Math.abs(pressureChange).toFixed(1)} hPa`;
+        iconSVG = `<svg class="weather-svg" viewBox="0 0 100 100">
+            <path class="cloud" d="M25,60 Q15,60 15,50 Q15,40 25,40 Q25,30 40,30 Q50,25 60,32 Q75,30 80,45 Q90,48 85,60 Z" fill="#64748b"/>
+            <line class="rain-drop" x1="30" y1="70" x2="25" y2="85" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
+            <line class="rain-drop" x1="50" y1="70" x2="45" y2="85" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
+            <line class="rain-drop" x1="70" y1="70" x2="65" y2="85" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
+            <path class="lightning" d="M55,45 L50,55 L58,55 L52,70" fill="none" stroke="#f59e0b" stroke-width="3"/>
+        </svg>`;
+    } else if (pressureChange < -0.5) {
+        // Falling pressure - rain likely
+        forecastText = 'Rain Likely';
+        forecastDetail = `Pressure falling ${Math.abs(pressureChange).toFixed(1)} hPa`;
+        iconSVG = `<svg class="weather-svg" viewBox="0 0 100 100">
+            <path class="cloud" d="M25,55 Q15,55 15,45 Q15,35 25,35 Q25,25 40,25 Q50,20 60,27 Q75,25 80,40 Q90,43 85,55 Z" fill="#94a3b8"/>
+            <line class="rain-drop" x1="30" y1="65" x2="25" y2="80" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
+            <line class="rain-drop" x1="50" y1="65" x2="45" y2="80" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
+            <line class="rain-drop" x1="70" y1="65" x2="65" y2="80" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
+        </svg>`;
+    } else if (pressureChange > 1) {
+        // Rising pressure - clearing up
+        forecastText = 'Clearing Up';
+        forecastDetail = `Pressure rising ${pressureChange.toFixed(1)} hPa`;
+        iconSVG = `<svg class="weather-svg" viewBox="0 0 100 100">
+            <circle class="sun" cx="35" cy="35" r="15" fill="#f59e0b"/>
+            <path class="cloud" d="M45,70 Q35,70 35,60 Q35,50 45,50 Q50,45 60,48 Q70,45 75,55 Q82,57 80,65 Q82,70 75,70 Z" fill="#e2e8f0"/>
+        </svg>`;
+    } else {
+        // Stable pressure - fair weather
+        forecastText = 'Fair Weather';
+        forecastDetail = 'Pressure stable';
+        iconSVG = `<svg class="weather-svg" viewBox="0 0 100 100">
+            <circle class="sun" cx="50" cy="50" r="20" fill="#f59e0b"/>
+            <g class="rays">
+                <line x1="50" y1="15" x2="50" y2="5" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                <line x1="50" y1="95" x2="50" y2="85" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                <line x1="15" y1="50" x2="5" y2="50" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                <line x1="95" y1="50" x2="85" y2="50" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                <line x1="25" y1="25" x2="18" y2="18" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                <line x1="75" y1="25" x2="82" y2="18" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                <line x1="25" y1="75" x2="18" y2="82" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+                <line x1="75" y1="75" x2="82" y2="82" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+            </g>
+        </svg>`;
+    }
+
+    if (UI.forecastIcon) UI.forecastIcon.innerHTML = iconSVG;
+    if (UI.forecastText) UI.forecastText.textContent = forecastText;
+    if (UI.forecastDetail) UI.forecastDetail.textContent = forecastDetail;
+}
+
+// Fullscreen toggle
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            showToast('Fullscreen not available', 'warning');
+        });
+        document.getElementById('fullscreenIcon').innerHTML = '<path d="M4 14H10V20M20 10H14V4M14 10L21 3M3 21L10 14"></path>';
+    } else {
+        document.exitFullscreen();
+        document.getElementById('fullscreenIcon').innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>';
+    }
+}
+
+// Compressed data storage for offline mode
+function saveCompressedData(feeds) {
+    try {
+        // Only save essential fields to reduce storage size
+        const compressed = feeds.map(f => ({
+            t: f.created_at,
+            1: f.field1,
+            2: f.field2,
+            3: f.field3,
+            5: f.field5
+        }));
+        localStorage.setItem('edgeLinkCompressedData', JSON.stringify(compressed));
+    } catch (e) {
+        console.warn('Could not save compressed data:', e);
+    }
+}
+
+function loadCachedData() {
+    try {
+        const compressed = localStorage.getItem('edgeLinkCompressedData');
+        if (compressed) {
+            const data = JSON.parse(compressed);
+            // Decompress back to original format
+            const feeds = data.map(d => ({
+                created_at: d.t,
+                field1: d['1'],
+                field2: d['2'],
+                field3: d['3'],
+                field5: d['5']
+            }));
+
+            if (feeds.length > 0) {
+                showToast('Showing cached data (offline)', 'warning');
+                updateDashboard(feeds.slice(-state.timeRange));
+            }
+        }
+    } catch (e) {
+        console.warn('Could not load cached data:', e);
+    }
+}
+
+// Offline banner management
+function showOfflineBanner() {
+    let banner = document.querySelector('.offline-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.className = 'offline-banner';
+        banner.innerHTML = '⚠️ You are offline. Showing cached data.';
+        document.body.prepend(banner);
+    }
+    setTimeout(() => banner.classList.add('visible'), 100);
+}
+
+function hideOfflineBanner() {
+    const banner = document.querySelector('.offline-banner');
+    if (banner) {
+        banner.classList.remove('visible');
+        setTimeout(() => banner.remove(), 300);
+    }
 }
 
 /* ==========================================
